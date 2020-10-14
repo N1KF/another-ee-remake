@@ -1,0 +1,256 @@
+<meta charset="ASCII">
+<title>EE imitation tests</title>
+<body><center>
+<!-- Upload eelvl file:
+<input id="lvl-files" type="file" accept=".eelvl,.json" multiple ="true" />
+<input id="convert" type="button" value="Convert" onclick="javascript:upload();"/>
+<br>
+!-->
+Width: <input id="width"  type="number" min="1" max="50" defaultValue="15"/>
+Height: <input id="height" type="number" min="1" max="50" defaultValue="10"/>
+<input id="newworld" type="button" value="Create new world"
+onclick="map.resize($('width').value, $('height').value)"/>
+<div>
+	<img id="smiley" width="0" height="0" src="smiley.png">
+	<img id="blocks" width="0" height="0" src="blocks.png">
+	<img id="aura"   width="0" height="0" src="aura.png">
+	<!-- <img id="bg"     width="0" height="0" src="bg.png">!-->
+	<canvas
+		id="game"
+		width="640" height="500"
+		tabindex="1"
+		oncontextmenu="return false;"
+	>
+	<p>Your browser probably doesn't support canvas tags. Please update it, you caveman.</p>
+	</canvas>
+	
+	<canvas
+		id="minimap"
+		width="0" height="0"
+		tabindex="2"
+		oncontextmenu="return false;"
+	>
+	</canvas>
+</div>
+<button type="button" onclick="alert('Use WASD or arrows to move, spacebar to jump, and G for God Mode.\n' +
+'Left click to edit, and right click to remove blocks.\n\n' +
+
+'Press - or + to loop through the blocks used for editing and filling.\n' + 
+'Press [, ], or \ to skip 1, 2, or 25 frames respectively.\n\n' +
+
+'Arrows and dots seem to work well. Other action blocks and one-ways dont work yet.')"
+>Help</button>
+<button type="button" onclick="reset()"          >Reset smiley</button>
+<button type="button" onclick="map.fillAll(0)"   >Clear all</button>
+<button type="button" onclick="map.fillAll(b)"   >Fill all</button>
+<button type="button" onclick="map.fillBorder(b)">Fill border</button>
+
+<p id="msp"></p>
+<p id="pos"></p>
+<p id="vel"></p>
+<p id="time"></p>
+
+Updates per second:
+<button type="button" onclick="stop()    ">0</button>
+<button type="button" onclick="start(200)">5</button>
+<button type="button" onclick="start(100)">10</button>
+<button type="button" onclick="start(75)" >15</button>
+<button type="button" onclick="start(50)" >20</button>
+<button type="button" onclick="start(40)" >25</button>
+<button type="button" onclick="start(20)" >50</button>
+<button type="button" onclick="start(15)" >75</button>
+<button type="button" onclick="start(10)" >100 (normal)</button>
+<button type="button" onclick="start(5)"  >200</button>
+
+<br> Skip updates:
+<button type="button" onclick="tick()"         >1</button>
+<button type="button" onclick="fastForward(2)" >2</button>
+<button type="button" onclick="fastForward(10)">10</button>
+<button type="button" onclick="fastForward(50)">50</button>
+</center>
+</body>
+<script type="text/javascript">
+var loop = 0;
+
+var reader;
+var data;
+
+window.onload = begin;
+
+function begin(){
+	requestAnimationFrame(constantDraw);
+	start(10);
+}
+
+function upload() {
+	var script = document.createElement('rawinflate');
+	script.src = 'rawinflate.js';
+	document.head.appendChild(script);
+	
+	lvl = document.getElementById("lvl-files").files[0];
+	if (typeof lvl === 'undefined') return;
+	
+	reader = new FileReader();
+	
+	reader.readAsBinaryString(lvl);
+	console.log("Upload byte size: " + lvl.size);
+	console.log(script)
+	
+	script.onload = function(){
+		console.log('Loaded rawinflate.js');
+		reader.onloadend = convertLevel;
+	}
+	
+	function convertLevel(){
+		data = this.result;
+		data = RawDeflate.inflate(this.result);
+		
+		console.log("Processed byte size: " + data.length);
+		var buffer = 0; // Buffer
+		
+		function getString(b2){
+			var stringLength = getIntThingy(b2);
+			var string = "";
+			for (var i = b2; i < b2+stringLength; i++) string += data.charAt(i+2);
+			return string;
+		}
+		
+		function getBiggerIntThingy(b2){
+			return (data.charCodeAt(b2) >> 12) + (data.charCodeAt(b2+1) >> 8) + (data.charCodeAt(b2) >> 4) + data.charCodeAt(b2+1);
+		}
+		
+		function getIntThingy(b2){
+			return (data.charCodeAt(b2) * 16) + data.charCodeAt(b2+1);
+		}
+		
+		//console.log(ownerNameLength);
+		var ownerName = getString(buffer);
+		buffer += ownerName.length + 2;
+		
+		var worldName = getString(buffer);
+		buffer += worldName.length + 4;
+		
+		map.columns = getIntThingy(buffer);
+		buffer += 4;
+		
+		map.rows    = getIntThingy(buffer);
+		buffer += 10; // skips gravity and bgcolor
+		
+		map.fillAll(0);
+		
+		var description = getString(buffer);
+		buffer += description.length + 3; // skip campaign boolean
+		
+		var crewID = getString(buffer);
+		buffer += crewID.length + 2;
+		
+		var crewName = getString(buffer);
+		buffer += crewName.length + 4;
+		
+		//var crewStatus = getIntThingy(buffer);
+		buffer += 3;
+		
+		var ownerID = getString(buffer);
+		buffer += ownerID.length + 4; // skip minimap boolean
+		
+		function replaceBlocks(){
+			var blocksX = [];
+			var blocksY = [];
+			
+			while (buffer < data.length){
+				var id     = getIntThingy(buffer); // 86, 87
+				var layer  = getIntThingy(buffer+4); // 90, 91?
+				var amount = getIntThingy(buffer+8); // 94, 95
+				buffer+=10;
+				
+				blocksX[id] = [];
+				blocksY[id] = [];
+				
+				//  First half: X positions
+				for (var i = 0; i < amount/2; i++){
+					blocksX[id].push(getIntThingy(buffer));
+					buffer += 2;
+				}
+				buffer += 4;
+				
+				// Second half: Y positions:
+				for (var i = (amount/2); i < amount; i++){
+					blocksY[id].push(getIntThingy(buffer));
+					edit(1, blocksX[id][i], getIntThingy(buffer), id);
+					console.log(blocksX[id]);
+					console.log(blocksX[id][i - amount/2]);
+					buffer += 2;
+				}
+				
+				/*
+				var blockID = getIntThingy(buffer)
+				console.log(blockID);
+				buffer += 2;
+				blocks[blockID] = getIntThingy(buffer);
+				//console.log(data.charCodeAt(buffer));
+				*/
+				//console.log(id);
+			}
+			console.log(blocksX);
+			console.log(blocksY);
+		}
+			//console.log(width, height);
+
+			/*
+			var buffer = new ArrayBuffer(data.length);
+			dv = new DataView(buffer, 0) 
+			console.log(buffer);
+			console.log(dv);
+			*/
+			/*
+			getString(ownerName);
+			getString(levelName);
+			*/
+	}
+}
+
+function $(ele){
+	return document.getElementById(ele);
+}
+
+function start(tickRate){
+	if(loop == 0) loop = setInterval(tick, tickRate);
+	else{stop()}
+}
+
+function stop(){
+		clearInterval(loop)
+		loop = 0;
+}
+
+var lastUpdate = 0;
+
+function tick(){
+	//checkForInput();
+	lastUpdate = Date.now();
+	updateWorld();
+}
+
+function fastForward(n){
+	//checkForInput();
+	for (i = 0; i < n; i++){
+		tick();
+	}
+}
+
+function alignToGrid(input){
+	var p = input % 16;
+	if (p > 8) p -= 16;
+	// p is the number of pixels away from the nearest tile.
+	
+	if (p < 2 && p > -2)
+	{	
+		if (p < 0.2 && p > -0.2) return Math.round(input); // Round to nearest tile
+		else return input - (p / 15); // Otherwise move it 1/15 of the remaining distance
+	}
+	return input;
+}
+</script>
+<script type="text/javascript" src="world.js"></script>
+<script type="text/javascript" src="input.js"></script>
+<script type="text/javascript" src="display.js"></script>
