@@ -1,151 +1,242 @@
-  var canvas  = $('game');
-  var canvas2 = $('minimap');
+const canvas2 = $('minimap');
+/*
 const smiley  = $('smiley');
 const blocks  = $('blocks');
 const bg      = $('bg');
 const aura    = $('aura');
+*/
+const  ctx =  canvas.getContext('2d', {alpha: false});
+const ctx2 = canvas2.getContext('2d', {alpha: false});
 
-const ctx = canvas.getContext('2d', {alpha: false, imageSmoothingEnabled: false});
-const ctx2 = canvas2.getContext('2d', {alpha: false, imageSmoothingEnabled: false});
+ctx.fillStyle = '#1F1F1F';
+ctx.imageSmoothingEnabled = false
 
-const VTILE = 16;
+var X_SCALE = Y_SCALE = 1;
+var prevPageWidth = prevPageHeight = 0;
+
+function addImage(name){
+	
+	window[name]     = document.createElement('img');
+	window[name].id  = name;
+	window[name].src = name + '.png';
+	
+	return window[name];
+}
+
+addImage('smiley');
+addImage('blocks');
+addImage('bg');
+addImage('aura');
+
+function x_vtile(){
+	return X_SCALE * 16;
+}
+	
+function y_vtile(){
+	return Y_SCALE * 16;
+}
+//var x_vtile() = X_SCALE * 16;
+//var y_vtile() = Y_SCALE * 16;
+const SPRITE_SIZE = 16;
 const DISPLAY_DIGITS = 6;
 
-var posDisplayX = 0, posDisplayY = 0;
-var velDisplayX = 0, velDisplayY = 0;
+var posTextX = 0, posTextY = 0;
+var velTextX = 0, velTextY = 0;
 
-var camera = {
-	x: 0,
-	y: 0,
-	width : 40*16,
-	height: 30*16,
-	move: function(target){
-		var xtarget =  target.x.pos;
-		var ytarget =  target.y.pos;
+class CameraDisplay extends Rectangle{
+	// maybe make the moving camera an entity apart from cameraDisplay
+	constructor(x, y, width, height, target){
+		super(x, y, width, height);
+		this.target = target;
+		this.x = x;
+		this.y = y;
+		this.width = width;
+		this.height = height;
 		
-		var xdiff = target.x.pos - this.x -  this.width /2;
-		var ydiff = target.y.pos - this.y -  this.height/2;
+		this.cx = 0;
+		this.cy = 0;
+		this.prevX = 0;
+		this.prevY = 0;
+		this.prevImg = null;
+	}
+	
+	move(){
+		this.prevX = this.x;
+		this.prevY = this.y;
 		
-		this.x += xdiff * 1/16;
-		this.y += ydiff * 1/16;
+		var xtarget = this.target.x.pos*X_SCALE;
+		var ytarget = this.target.y.pos*Y_SCALE;
+		
+		var xdiff = xtarget - this.x - this.width /2;
+		var ydiff = ytarget - this.y - this.height/2;
+		
+		if (xdiff < 0.00001 && xdiff > 0.00001) xdiff = 0;
+		if (ydiff < 0.00001 && ydiff > 0.00001) ydiff = 0;
+		
+		var lag = 1/16;
+		
+		this.x += xdiff * lag; // = Math.round(this.x + xdiff * 1/16);
+		this.y += ydiff * lag;
+	}
+	
+	draw(){
+		//var layer = 1;
+		
+		//var pixelRowsVisible = camera.yx + this.width;
+		//console.log(prevImg);
+		//console.log(this.prevX,this.x);
+		/*
+		if (this.prevImg != null) ctx.putImageData(this.prevImg,
+			this.cx - (Math.abs(this.prevX, this.x)),
+			this.cy + (Math.abs(this.prevY, this.y))
+			);
+		*/
+		ctx.clearRect(this.cx,this.cy,this.width,this.height);
+		
+		//else{
+			for (var i = 0; i < map.columns*map.rows; i++){
+				var tx = map.getTileX(i);
+				var ty = map.getTileY(i);
+				
+				var columnIsVisible = tx*x_vtile() < (this.x + this.width ) && tx*x_vtile() > this.x-x_vtile();
+				var    rowIsVisible = ty*y_vtile() < (this.y + this.height) && ty*y_vtile() > this.y-y_vtile();
+			
+				if (columnIsVisible && rowIsVisible){
+				
+					if (!serverBlockInfo[map.tiles[i]].isSolid) this.drawBlock(0, tx, ty); // Draw background behind transparent blocks
+					this.drawBlock(map.tiles[i], tx, ty); // Draw foreground block
+				}
+			}
+		//}
+		//this.prevImg = ctx.getImageData(this.cx, this.cy, this.width, this.height);
+		
+		for (var i = 0; i < entities.length; i++) this.drawEntity(entities[i]);
+		
+		//ctx.fillRect(  this.cx+this.width , 0, x_vtile(), this.height+y_vtile());
+		//ctx.fillRect(0,this.cy+this.height,    this.width, y_vtile());
+	}
+
+	drawBlock(id, x, y){
+			
+		ctx.drawImage(blocks,
+			// Cropping
+			id * SPRITE_SIZE,           0, // Area
+				 SPRITE_SIZE, SPRITE_SIZE, // Size
+					 
+			//  Drawing
+			 Math.round(x * x_vtile() - this.x + this.cx),
+			 Math.round(y * y_vtile() - this.y + this.cy),
+				 x_vtile(),               y_vtile()
+				 );
+	}
+
+	drawEntity(entity){
+		
+		if (entity.isFlying) ctx.drawImage(aura,
+		Math.round(entity.x.pos*X_SCALE - this.x - entity.width *X_SCALE*1.5 + this.cx), 
+		Math.round(entity.y.pos*Y_SCALE - this.y - entity.height*Y_SCALE*1.5 + this.cy),
+		
+		entity.width*4*X_SCALE, entity.height*4*Y_SCALE);
+		
+		ctx.drawImage(smiley,
+		Math.round(entity.x.pos*X_SCALE - this.x + this.cx),
+		Math.round(entity.y.pos*Y_SCALE - this.y + this.cy),
+		
+		entity.width*X_SCALE, entity.height*Y_SCALE);
 	}
 }
 
-var minimap = {
-	x: 0,
-	y: 0,
-	scale: 1,
-	width: 25,
-	height: 25,
-	update: function(x, y, style){
+class Minimap extends Rectangle{
+	
+	constructor(x, y, width, height, scale){
+		super(x, y, width, height);
+		this.x = x;
+		this.y = y;
+		this.width = width;
+		this.height = height;
+		this.scale = scale;
+	}
+	
+	update(x, y, style){
 		var s = this.scale;
 		ctx2.fillStyle = style;
 		ctx2.fillRect(x*s, y*s, s, s);
-	},
-	clear: function(){
+	}
+	
+	clear(){
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
-	},
-	resize: function(){
-		canvas2.height = map.rows*minimap.scale;
+	}
+	
+	resize(){
 		canvas2.width = map.columns*minimap.scale;
+		canvas2.height = map.rows*minimap.scale;
 	}
 }
-minimap.resize();
+
+class Hotbar extends Rectangle{
+	draw(){
+		var screenBlocksWide = Math.floor((canvas.width/16)-1)
+		
+		ctx.clearRect(0, canvas.height-this.height, canvas.width, this.height);
+
+		ctx.drawImage(blocks,
+		
+		Math.floor(b - (screenBlocksWide/2))*16, 0, screenBlocksWide*16, 16,
+		8, canvas.height-18, screenBlocksWide*16, 16);
+		
+		ctx.drawImage(blocks, 5*16, 0, 16, 16,
+		canvas.width/2 - canvas.width/2%16 + 8, canvas.height-32, 16, 16);
+		// WEIRD AND UNNECESARY BUG:
+		// ctx.drawImage(blocks, (b-19)*16, 0, Math.min(39*16, (b-98)*16), 16,8, 482, 39*16, 16);
+		
+		//if (hasParent && entities.length > 1) updateInfo();
+	}
+}
+
+const GUI = [];
+GUI.push(new CameraDisplay(0,0,40*16,30*16,entities[0]));
+GUI.push(new Hotbar(0,0,0,28));
+
+resize();
 
 //minimap.width  = map.columns*minimap.scale,
 //minimap.height = map.rows   *minimap.scale,
 
-function constantDraw(){
-	draw();
-	editHold();
-	requestAnimationFrame(constantDraw);
+function resize(){
+	//prevPageWidth  = document.body.clientWidth;
+	//prevPageHeight = document.body.clientHeight;
+	
+	canvas.width  = Math.max(64, document.body.clientWidth);
+	canvas.height = Math.max(64, document.body.clientHeight);
+	
+	GUI[0].width  = canvas.width;
+	GUI[0].height = canvas.height - 16;
 }
 
 function draw(){
-	updateHTML();
-	camera.move(entities[0]);
+	ctx.fillStyle = '#1F1F1F'
 	
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	if (canvas.width != document.body.clientWidth || canvas.height != document.body.clientHeight) resize();
+	//ctx.clearRect(0, 0, canvas.width, canvas.height-20);
 	
-	var layer = 1;
-	//map.tiles[1].forEach(drawRow)
+	for (var i = 0; i < GUI.length; i++) GUI[i].draw();
+}
+function updateInfo(){
 	
-	for (var i = 0; i < map.columns*map.rows; i++){
-		if (isNonSolid[map.tiles[i]]) drawBlock(0, map.getTileX(i), map.getTileY(i)); // Draw background behind transparent blocks
-		drawBlock(map.tiles[i], map.getTileX(i), map.getTileY(i)); // Draw foreground block
+	if (posTextX != mainEntity.x.pos / 16 || posTextY != mainEntity.y.pos / 16){
+		updateHTML('x', mainEntity.x.pos, DISPLAY_DIGITS);
+		updateHTML('y', mainEntity.y.pos, DISPLAY_DIGITS);
 	}
-	
-	/*
-	if (typeof imageBatch != 'object'){
-		ctx.clearRect(0, 0, canvas.width, canvas.height)
-		
-		map.tiles[1].forEach(drawRow)
-		imageBatch = ctx.getImageData(0,0,canvas.width,canvas.height)
-		
-		console.log(typeof imageBatch);
+	if (velTextX != mainEntity.x.v || velTextY != mainEntity.y.v){
+		velTextX  = mainEntity.x.v;
+		velTextY  = mainEntity.y.v;
+		updateHTML('xvel', velTextX, DISPLAY_DIGITS);
+		updateHTML('yvel', velTextY, DISPLAY_DIGITS);
 	}
-	ctx.putImageData(imageBatch,0,0)
-	*/
-	
-	//layer = 0;
-	//map.tiles[0].forEach(drawRow)
-	
-	/*
-	function drawRow(item, r){
-		for (c = 0; c < map.columns; c++){
-			drawBlock(layer, c, r)
-		}
-	}
-	*/
-	
-			ctx.drawImage(blocks,
-			// Cropping
-			b * VTILE,         0, // Area
-			     VTILE,     VTILE, // Size
-					 
-			//  Drawing
-			 0, 0, VTILE, VTILE
-				 );
-	
-	function drawBlock(id, x, y){
-			
-		ctx.drawImage(blocks,
-			// Cropping
-			id * VTILE,         0, // Area
-			     VTILE,     VTILE, // Size
-					 
-			//  Drawing
-			 x * VTILE - camera.x, y * VTILE - camera.y,
-			     VTILE,                VTILE
-				 );
-	}
-	
-	entities.forEach(drawEntity);
-	
-	function drawEntity(entity){
-		if (entity.isFlying) ctx.drawImage(aura, Math.round(entity.x.pos - camera.x - 24), Math.round(entity.y.pos - camera.y - 24));
-		ctx.drawImage(smiley, entity.x.pos - camera.x, entity.y.pos - camera.y);
-	}
+	//$("time").innerHTML = (time / 100).toFixed(2) + " second(s) since last reset"
+	updateHTML('time', time / 100, 2);
 }
 
-function updateHTML(){
-	
-	if (posDisplayX != entities[0].x.pos / VTILE || posDisplayY != entities[0].y.pos / VTILE){
-		posDisplayX = entities[0].x.pos // / VTILE;
-		posDisplayY = entities[0].y.pos // / VTILE;
-		$( "pos").innerHTML = "Block position: " + posDisplayX.toFixed(DISPLAY_DIGITS) + ", " +posDisplayY.toFixed(DISPLAY_DIGITS);
-	}
-	if (velDisplayX != entities[0].x.v || velDisplayY != entities[0].y.v){
-		velDisplayX  = entities[0].x.v;
-		velDisplayY  = entities[0].y.v;
-		$( "vel").innerHTML = "Velocity: " + velDisplayX.toFixed(DISPLAY_DIGITS) + ", " + velDisplayY.toFixed(DISPLAY_DIGITS);
-	}
-	
-	$("time").innerHTML = (time / 100).toFixed(2) + " second(s) since last reset"
-}
-
-function updateEditHistory(){
-	//$( "msp").innerHTML = "Last edit position: " + "(" + xtile + ", " + ytile ")";
-	
-	//console.log(ytile * map.columns + xtile);
+function updateHTML(element, value, depth){
+	$(element).innerHTML = value.toFixed(depth);
 }
