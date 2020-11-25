@@ -14,7 +14,6 @@ var controlDown = 0;
 var isJumping = false;
 var overlapA = -1;
 var grounded = false;
-const serverBlockInfo = [];
 
 var time = 0;
 
