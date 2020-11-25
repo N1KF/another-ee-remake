@@ -62,6 +62,16 @@ class Rectangle {
 }
 
 window.onload = function(){
+	initializeBlockRange(0,97);
+	
+	setBlockInfo([0,1,2,3,4,5,6,7,8,26,27,28,77,83,89,90,91,96,97], 'isSolid', false);
+
+	setBlockInfo([1], 'xgravity', -2);
+	setBlockInfo([2], 'ygravity', -2);
+	setBlockInfo([3], 'xgravity',  2);
+	setBlockInfo([4], 'xgravity',  0);
+	setBlockInfo([1,3,4], 'ygravity',  0);
+
 	ctx.imageSmoothingEnabled = false;
 	draw();
 	requestAnimationFrame(constantRun);
