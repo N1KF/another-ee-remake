@@ -1,0 +1,112 @@
+<meta charset="ASCII">
+<head>
+<title>Another Everybody Edits Remake!</title>
+<link rel="shortcut icon" type="image/png" href=”smiley.png”>
+<style>
+* {
+	font-family: "Courier New", Courier, monospace;
+	color: lightgrey;
+}
+html, body {
+
+	margin: 0;
+	background: #0F0F0F;
+	
+}
+img {
+	width: 0;
+	height: 0;
+	display: none;
+}
+</style>
+</head>
+<body>
+	<canvas 
+		id="game"
+		width="640" height="500"
+		tabindex="1"
+		oncontextmenu="return false;"
+		class="canvas"
+		style="left:0px; top:0px; z-index:1; position:absolute;"
+	>
+	<span style="left:200px; top:200px; z-index:3; position:absolute;">Another Everybody Edits Remake!</span>
+	<canvas
+		id="minimap"
+		width="0" height="0"
+		tabindex="2"
+		oncontextmenu="return false;"
+		class="canvas"
+		style="bottom:0px; right:0px; z-index:2; position:absolute;"
+	>
+	<p>Your browser probably doesn't support HTML5 canvas tags. Please update it, you caveman.</p>
+	</canvas>
+	</div>
+	<p id="msp"></p>
+	<p id="pos"></p>
+	<p id="vel"></p>
+	<p id="time"></p>
+</body>
+
+<script type="text/javascript">
+const canvas  = $('game');
+var loop = 0;
+
+class Rectangle {
+	constructor(x, y, width, height){
+		this.x = new Axis(x);
+		this.y = new Axis(y);
+		this.width = width;
+		this.height = height;
+	}
+}
+
+window.onload = function(){
+	ctx.imageSmoothingEnabled = false;
+	draw();
+	requestAnimationFrame(constantRun);
+	start(10);
+}
+
+function constantRun(){
+	draw();
+	editHold();
+	requestAnimationFrame(constantRun);
+}
+
+function $(element){
+	return document.getElementById(element);
+}
+
+function start(tickRate){
+	if(loop == 0) loop = setInterval(tick, tickRate);
+	else{stop()}
+}
+
+function stop(){
+	clearInterval(loop)
+	loop = 0;
+}
+
+//var lastUpdate = 0;
+function tick(n){
+	//checkForInput();
+	for (i = 0; i < n; i++){
+		updateWorld();
+	}
+}
+
+function tick(){
+	//checkForInput();
+	updateWorld();
+}
+
+function random(min,max){
+	return Math.floor(Math.random() * (max - min) + min);
+}
+	// todo: consider adding dynamic JavaScript loading for more modularity
+	//
+	// https://htmldom.dev/load-a-javascript-file-dynamically/
+</script>
+<script type="text/javascript" src="input.js"></script>
+<script type="text/javascript" src="world.js"></script>
+<script type="text/javascript" src="display.js"></script>
