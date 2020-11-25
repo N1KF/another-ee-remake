@@ -1,10 +1,27 @@
 const BG = 0;
 const FG = 1;
 
+var entities = [];
+
+const width = 16;
+const height = 16;
+
+const        BASE_DRAG = Math.pow(0.9981,10) * 1.00016093; // 0.9813195279915707
+const NO_MODIFIER_DRAG = Math.pow(0.9900,10) * 1.00016093; // 0.9045276172161355
+
+var controlRight = 0;
+var controlDown = 0;
+var isJumping = false;
+var overlapA = -1;
+var grounded = false;
+const serverBlockInfo = [];
+
+var time = 0;
+
 // WORLD ID GENERATION: Date.now() - (4101 * 86400)
 
 var map = {
-	columns : 15,
+	columns : 10,
 	rows    : 10,
 	tiles   : [],
 	
@@ -26,49 +43,95 @@ var map = {
 	
 	fillBorder: function (blockID){
 		for (var i = 0; i < this.columns; i++){
-			map.tiles[i] = blockID;
-			//map.tiles[i * this.rows] = blockID;
-			//map.tiles[i * this.rows + this.columns-1] = blockID;
-			map.tiles[i + (this.columns * (this.rows-1))] = blockID;
+			
+			this.tiles[i] = blockID;                                  // Fills the top
+			//map.tiles[i * (this.columns +  this.rows-1) ] = blockID; // Fills right side
+			this.tiles[i + (this.columns * (this.rows   -1))] = blockID; // Fills bottom
+		}
+		for (var i = 1; i < this.rows;    i++){
+			this.tiles[i*this.columns-1] = blockID; // Fills right side
+			this.tiles[i*this.columns  ] = blockID; // Fills left side
 		}
 	},
 	
 	fillAll: function (blockID){
 		// console.log(minimap); // weird
 		for (var i = 0; i < this.columns*this.rows; i++){
-			map.tiles[i] = blockID;
+			this.tiles[i] = blockID;
 		}
 	},
 	
 	resize: function (x, y){
-		if(x < 51) this.columns = x;
-		if(y < 51) this.rows    = y;
+		this.reset();
+		if (x * y <= 1000000){ // you cannot handle the power
+			if (x >= 2) this.columns = Math.round(x);
+			if (y >= 2) this.rows    = Math.round(y);
+		}
 		this.fillAll(0);
 		this.fillBorder(b);
+	},
+	
+	reset: function(){
+		entities.forEach(reset);
 	}
 }
 map.fillAll(0);
-map.fillBorder(10);
+map.fillBorder(b);
 //map.fillBorders(FG, 9);
 
 // These should probably be per-smiley variables, not global variables
-var controlRight = 0;
-var controlDown = 0;
-var isJumping = false;
-var overlapA = -1;
-var grounded = false;
 
-const isNonSolid = [1,1,1,1,1,1,1,1,1,,,,,,,,,,,,,,,,,,1,1,1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,1,1,1,,,,,,,,,,,,,1,,,,,,1,,,,,,1,1,1,,,,,1,1];
+//const isNonSolid = [1,1,1,1,1,1,1,1,1,,,,,,,,,,,,,,,,,,1,1,1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,1,1,1,,,,,,,,,,,,,1,,,,,,1,,,,,,1,1,1,,,,,1,1];
+
+function initializeBlockRange(start, end){
+	for (var i = start; i <= end; i++) serverBlockInfo[i] = {};
+}
+
+function setBlockInfo(array, attribute, value){
+	for (var i = 0; i < array.length; i++){
+		
+		if (typeof serverBlockInfo[array[i]] === 'undefined') serverBlockInfo[array[i]] = {};
+		serverBlockInfo[array[i]][attribute] = value; 
+		
+		//serverBlockInfo[i] = 
+	}
+}
+
+initializeBlockRange(0,97);
+setBlockInfo([0,1,2,3,4,5,6,7,8,26,27,28,77,83,89,90,91,96,97], 'isSolid', false);
+
+setBlockInfo([1], 'xgravity', -2);
+setBlockInfo([2], 'ygravity', -2);
+setBlockInfo([3], 'xgravity',  2);
+setBlockInfo([4], 'xgravity',  0);
+setBlockInfo([1,3,4], 'ygravity',  0);
+
+/*
+
+			                             {x.mor =  0; y.mor =  0; this.queue[1] = 4;}
+		else if(this.currentInside === 1){x.mor = -2; y.mor =  0;}
+		else if(this.currentInside === 2){x.mor =  0; y.mor = -2;}
+		else if(this.currentInside === 3){x.mor =  2; y.mor =  0;}
+		else                             {x.mor =  0; y.mor =  2;}
+		
+		     if(this.queue[0] === 4 ||  this.isFlying)
+			                        {x.mo =  0; y.mo =  0;}
+		else if(this.queue[0] === 1){x.mo = -2; y.mo =  0;}
+		else if(this.queue[0] === 2){x.mo =  0; y.mo = -2;}
+		else if(this.queue[0] === 3){x.mo =  2; y.mo =  0;}
+		else                        {x.mo =  0; y.mo =  2;}
+		*/
+
 
 function edit(z, x, y, b){
-	updateEditHistory();
+	//updateEditHistory();
 	
 	var i = map.tileCoordsToNumber(x,y);
 	
 	try{
-		if (map.tiles.length > i && map.tiles[i]!= b){
+		if (map.tiles.length > i && map.tiles[i]!= b && typeof serverBlockInfo[b] != 'undefined'){
 			map.tiles[i] = b;
-			if (isNonSolid[b] == 1) minimap.update(x, y, '#000000');
+			if (serverBlockInfo[b] == false) minimap.update(x, y, '#000000');
 			else minimap.update(x, y, '#ffffff');
 		}
 	}
@@ -77,8 +140,6 @@ function edit(z, x, y, b){
 }
 
 function overlaps(x, y, size){
-	if (x < 0 || y < 0 || x > map.columns * 16 - 16 || y > map.rows * 16 - 16) return true;
-	
 	var topLeftX = x/16 >> 0; // _loc3_
 	var topLeftY = y/16 >> 0; // _loc4_
 	
@@ -95,7 +156,7 @@ function overlaps(x, y, size){
 		/*
 		if(blockID === (61||62||63)){
 			
-			if (entities[0].y.v < 0 || currentY <= overlapA || (entities[0].y.v === 0 && entities[0].x.v === 0 && entities[0].y.pos + 15 > currentY*16)){
+			if (mainEntity.y.v < 0 || currentY <= overlapA || (mainEntity.y.v === 0 && mainEntity.x.v === 0 && mainEntity.y.pos + 15 > currentY*16)){
 				
 				if(currentY != topLeftY || overlapA === -1){
 					overlapA = currentY;
@@ -104,16 +165,17 @@ function overlaps(x, y, size){
 			}
 			else return true;
 		}*/
-		return !isNonSolid[blockID];
+		if (typeof blockID === 'undefined') return true;
+		if (serverBlockInfo[blockID].isSolid == false) return false;
+		
+		return true;
 	}
 	
 	if (isBlockSolid(0,0)||
 	   (isBlockSolid(1,0) && !alignedX)||
 	   (isBlockSolid(0,1) && !alignedY)||
 	   (isBlockSolid(1,1) && !alignedX && !alignedY))
-	{
-			return true;
-	}
+	{return true;}
 	
 	if (!overlapsOneWay) overlapA = -1;
 	
@@ -179,6 +241,23 @@ function overlaps(x, y, size){
 
 function isInside(position){
 	return position + 8 >> 4;
+}
+
+const ALIGN_THRESHOLD = 2;
+const INSTANT_ALIGN_THRESHOLD = 0.2;
+
+function alignToGrid(input){
+	var p = input % 16;
+	if (p > 8) p -= 16;
+	// p is the number of pixels away from the nearest tile.
+	
+	if (p < ALIGN_THRESHOLD && p > -ALIGN_THRESHOLD)
+	{	
+		if (p < INSTANT_ALIGN_THRESHOLD && p > -INSTANT_ALIGN_THRESHOLD) return Math.round(input); // Round to nearest tile
+		else return input - (p / 15); // Otherwise move it 1/15 of the remaining distance
+	}
+	
+	return input;
 }
 
 // AXIS
@@ -262,8 +341,9 @@ class Axis{
 			else{this.pos += this.cs; this.cs = 0}
 		}
 		
+		var outOfBounds = (this.pos < 0 || this.pos > this.limit);
 		
-		if(this.pos < 0 || overlaps(x.pos,y.pos,16) && !entities[0].isFlying){ // overlap detection here
+		if(outOfBounds || overlaps(entities[0].x.pos,entities[0].y.pos,16) && !mainEntity.isFlying){ // overlap detection here
 			this.pos = startingPos;
 			if(this.v > 0 && this.mor > 0 || this.v < 0 && this.mor < 0) grounded = true;
 			this.v = 0;
@@ -276,24 +356,39 @@ class Axis{
 
 // ENTITY
 
-class Entity{
-	constructor(spawnX, spawnY){
-		this.x = new Axis(spawnX);
-		this.y = new Axis(spawnY);
+class Entity extends Rectangle{
+	constructor(x,y,width,height){
+		super(x,y,width,height);
+		
+		this.x.pos  = x;
+		this.y.pos  = y;
+		this.width  = width;
+		this.height = height;
 		
 		this.isFlying = false;
 		
-		this.queue = [0, 0, 0];
-		this.tileQueue = [];
+		this.queue         = [0, 0, 0];
+		this.tileQueue     = [];
 		this.currentInside = 0;
 		
 		this.moving = false;
+	}
+	
+	reset(){
+		this.x = new Axis(16);
+		this.y = new Axis(16);
 	}
 	
 	tick(){
 		// One tick of movement: (v + ( 2 / 7.752 / 2)) * BASE_DRAG
 		// One tick of falling : (v + ( 2 / 7.752    )) * BASE_DRAG
 		//              Jumping:  v = (26 / 7.752 * 2)  * BASE_DRAG
+		
+		var x = this.x;
+		var y = this.y;
+		
+		x.limit = (map.columns-1)*16;
+		y.limit = (map.rows-1)*16;
 		
 		x.m = controlRight;
 		y.m = controlDown;
@@ -302,24 +397,28 @@ class Entity{
 		y.tickStart();
 		
 		this.currentInside = map.tileCoordsToId(isInside(x.pos), isInside(y.pos));
+		var currentProperties = serverBlockInfo[this.currentInside];
+		
+		var previousInside = this.queue[1]; // i think???
+		var previousProperties = serverBlockInfo[previousInside];
 		
 		this.queue.push(this.currentInside)
 		this.queue.shift();
-		
 		// this stuff is temporary don't worry
-		     if(this.currentInside === 4 ||  this.isFlying)
-			                             {x.mor =  0; y.mor =  0; this.queue[1] = 4;}
-		else if(this.currentInside === 1){x.mor = -2; y.mor =  0;}
-		else if(this.currentInside === 2){x.mor =  0; y.mor = -2;}
-		else if(this.currentInside === 3){x.mor =  2; y.mor =  0;}
-		else                             {x.mor =  0; y.mor =  2;}
+		if(this.currentInside === 4 || this.isFlying){
+			this.queue[1] = 4;
+			}
+		if(typeof currentProperties.xgravity != 'undefined') x.mor = currentProperties.xgravity;
+		else x.mor =  0;
+		if(typeof currentProperties.ygravity != 'undefined') y.mor = currentProperties.ygravity;
+		else y.mor =  2;
 		
-		     if(this.queue[0] === 4 ||  this.isFlying)
-			                        {x.mo =  0; y.mo =  0;}
-		else if(this.queue[0] === 1){x.mo = -2; y.mo =  0;}
-		else if(this.queue[0] === 2){x.mo =  0; y.mo = -2;}
-		else if(this.queue[0] === 3){x.mo =  2; y.mo =  0;}
-		else                        {x.mo =  0; y.mo =  2;}
+		if(typeof previousProperties.xgravity != 'undefined') x.mo = previousProperties.xgravity
+		else x.mo =  0;
+		if(typeof previousProperties.ygravity != 'undefined') y.mo = previousProperties.ygravity;
+		else y.mo =  2;
+		
+		if (this.isFlying) x.mo = y.mo =  0;
 		
 		if (x.mo) x.m = 0;
 		else if (y.mo) y.m = 0;
@@ -350,7 +449,6 @@ class Entity{
 			if (x.mor && x.mo) x.v = -x.mo * (26 / 7.752);
 			if (y.mor && y.mo) y.v = -y.mo * (26 / 7.752);  // todo: add jumpMultiplier
 		}
-		isJumping = false;
 		
 		/*
 		if(injump && !this.hasLevitation)
@@ -389,26 +487,20 @@ class Entity{
 	}
 }
 
-var entities = [];
-entities.push(new Entity(16,16));
-
-var x = entities[0].x;
-var y = entities[0].y;
-
-const width = 16;
-const height = 16;
-
-const        BASE_DRAG = Math.pow(0.9981,10) * 1.00016093; // 0.9813195279915707
-const NO_MODIFIER_DRAG = Math.pow(0.9900,10) * 1.00016093; // 0.9045276172161355
-
-var time = 0;
+//var x = mainEntity.x;
+//var y = mainEntity.y;
 
 //         horizontal = leftdown + rightdown; 1 or 0
 //         vertical = updown + downdown; 1 or 0
 
 function updateWorld(){
-	entities[0].tick()
+	mainEntity.tick()
 	//console.log(x);
 	//console.log(y);
+	//for (var i = 0; i < cameras.length; i++) cameras[i].move();
+	GUI[0].move();
 	time++;
 }
+
+entities.push(new Entity(16,16,16,16));
+var mainEntity = entities[0];
